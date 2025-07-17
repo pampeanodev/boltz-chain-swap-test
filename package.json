@@ -1,0 +1,31 @@
+{
+  "name": "boltz-debug-test",
+  "version": "1.0.0",
+  "description": "WebSocket-based test environment for debugging Boltz chain swap detectSwap issue",
+  "main": "test-websocket.ts",
+  "scripts": {
+    "test:websocket": "ts-node test-websocket.ts",
+    "dev": "ts-node --watch test-websocket.ts",
+    "start": "TEST_MODE=websocket npm run test:websocket"
+  },
+  "dependencies": {
+    "@nestjs/axios": "^3.0.2",
+    "@nestjs/common": "^10.0.0",
+    "@vulpemventures/secp256k1-zkp": "^3.2.1",
+    "axios": "^1.6.0",
+    "bitcoinjs-lib": "^6.1.5",
+    "boltz-core": "^2.0.0",
+    "ecpair": "^2.1.0",
+    "liquidjs-lib": "^6.0.2-liquid.37",
+    "rxjs": "^7.8.0",
+    "tiny-secp256k1": "^2.2.4",
+    "typeorm": "^0.3.17",
+    "ws": "^8.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
