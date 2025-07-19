@@ -20,7 +20,7 @@ async function testWebSocketListeners() {
   const service = new ChainToChainSwapService(
     BOLTZ_API_URL,
     BOLTZ_WEBSOCKET_URL,
-    NETWORK,
+    NETWORK
   );
 
   try {
@@ -47,36 +47,36 @@ async function testWebSocketListeners() {
     console.log("");
 
     console.log(
-      "🔄 WebSocket listener is now active and waiting for updates...",
+      "🔄 WebSocket listener is now active and waiting for updates..."
     );
     console.log("");
     console.log("=== Next Steps for Testing ===");
     console.log(
       "1. Send",
       chainSwap.lockupDetails.amount,
-      "satoshis of L-BTC to:",
+      "satoshis of L-BTC to:"
     );
     console.log("   Address:", chainSwap.lockupDetails.lockupAddress);
     console.log("   BIP21:", chainSwap.lockupDetails.bip21);
     console.log("");
     console.log(
-      "2. Watch the console for WebSocket messages as the swap progresses",
+      "2. Watch the console for WebSocket messages as the swap progresses"
     );
     console.log("3. The service will automatically handle:");
     console.log("   - swap.created event");
     console.log("   - transaction.lockup event");
     console.log(
-      "   - transaction.server.mempool event (where detectSwap is called)",
+      "   - transaction.server.mempool event (where detectSwap is called)"
     );
     console.log("   - transaction.claimed event");
     console.log("");
     console.log("Expected flow:");
     console.log(
-      "  swap.created → transaction.lockup → transaction.server.mempool → transaction.claimed",
+      "  swap.created → transaction.lockup → transaction.server.mempool → transaction.claimed"
     );
     console.log("");
     console.log(
-      '⚠️  The detectSwap issue should occur during the "transaction.server.mempool" event',
+      '⚠️  The detectSwap issue should occur during the "transaction.server.mempool" event'
     );
     console.log("");
 
@@ -112,49 +112,6 @@ async function testWebSocketListeners() {
   }
 }
 
-// Function to test just the detectSwap functionality with provided transaction data
-async function testDetectSwapOnly() {
-  console.log("=== Testing detectSwap Only ===");
-
-  const LOCKUP_TX_HEX = process.env.LOCKUP_TX_HEX || "";
-  const CLAIM_SWAP_TREE = process.env.CLAIM_SWAP_TREE || "";
-
-  if (!LOCKUP_TX_HEX || !CLAIM_SWAP_TREE) {
-    console.log(
-      "❌ Please set LOCKUP_TX_HEX and CLAIM_SWAP_TREE environment variables",
-    );
-    console.log("Example:");
-    console.log('export LOCKUP_TX_HEX="your_lockup_transaction_hex_here"');
-    console.log(
-      'export CLAIM_SWAP_TREE=\'{"claimLeaf":{"version":0,"output":"..."},"refundLeaf":{"version":0,"output":"..."}}\'',
-    );
-    return;
-  }
-
-  const service = new ChainToChainSwapService(
-    BOLTZ_API_URL,
-    BOLTZ_WEBSOCKET_URL,
-    NETWORK,
-  );
-
-  try {
-    await service.initialize();
-    const result = await service.testDetectSwap(LOCKUP_TX_HEX, CLAIM_SWAP_TREE);
-
-    if (result) {
-      console.log("✅ detectSwap successful:", result);
-    } else {
-      console.log(
-        "❌ detectSwap returned undefined - this is the issue you need to investigate",
-      );
-    }
-  } catch (error) {
-    console.error("❌ Error testing detectSwap:", error);
-  } finally {
-    service.disconnect();
-  }
-}
-
 // Function to simulate WebSocket messages for testing listeners without actual swap
 async function testWebSocketListenersWithMockData() {
   console.log("=== Testing WebSocket Listeners with Mock Data ===");
@@ -164,7 +121,7 @@ async function testWebSocketListenersWithMockData() {
   const service = new ChainToChainSwapService(
     BOLTZ_API_URL,
     BOLTZ_WEBSOCKET_URL,
-    NETWORK,
+    NETWORK
   );
 
   try {
@@ -191,8 +148,6 @@ async function main() {
     case "websocket":
       await testWebSocketListeners();
       break;
-    case "detectswap":
-      await testDetectSwapOnly();
       break;
     case "connection":
       await testWebSocketListenersWithMockData();

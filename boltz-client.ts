@@ -30,7 +30,7 @@ export class BoltzClient {
   async getSwapClaimDetails(id: string) {
     try {
       const response = await axios.get(
-        `${this.apiUrl}/v2/swap/submarine/${id}/claim`,
+        `${this.apiUrl}/v2/swap/chain/${id}/claim`,
       );
       return response.data;
     } catch (error) {
