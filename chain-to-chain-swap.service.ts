@@ -11,14 +11,15 @@ import {
     OutputType,
     SwapTreeSerializer,
     targetFee,
+    TaprootUtils,
     constructClaimTransaction,
-    init
 } from "boltz-core";
-import {TaprootUtils} from "boltz-core";
+import {TaprootUtils as LiquidTaprootUtils, init} from "boltz-core/dist/lib/liquid";
 import {BoltzClient} from "./boltz-client";
 import {BoltzWebsocketClient} from "./boltz-websocket-client";
 import {ChainSwapResponseDto} from "./dto/chain-swap-response.dto";
 import {Transaction} from "bitcoinjs-lib";
+import {regtest} from "liquidjs-lib/src/networks";
 
 // Mock entities for testing
 interface WithdrawChainSwapTransaction {
@@ -69,7 +70,7 @@ export class ChainToChainSwapService {
     async initialize() {
         this.zkp = await zkpInit();
         this.keyPair = ECPairFactory(ecc).makeRandom();
-        init(ecc)
+        init(this.zkp)
 
         // Connect to WebSocket
         try {
@@ -83,10 +84,6 @@ export class ChainToChainSwapService {
 
     async getPubKeyHex(): Promise<string> {
         return this.keyPair.publicKey.toString("hex");
-    }
-
-    async getKeyPair(): Promise<ECPairInterface> {
-        return this.keyPair;
     }
 
     async createClaimTransaction(
@@ -153,7 +150,7 @@ export class ChainToChainSwapService {
                     this.bitcoinNetwork
                 ),
                 fee,
-                false
+                false,
             )
         );
 
@@ -448,7 +445,7 @@ export class ChainToChainSwapService {
             boltzPublicKey,
             this.keyPair.publicKey,
         ]);
-        TaprootUtils.tweakMusig(
+        LiquidTaprootUtils.tweakMusig(
             musig,
             SwapTreeSerializer.deserializeSwapTree(swapEntity.lockupSwapTree).tree
         );
