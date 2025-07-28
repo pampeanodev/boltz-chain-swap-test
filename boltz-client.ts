@@ -27,7 +27,7 @@ export class BoltzClient {
     }
   }
 
-  async getSwapClaimDetails(id: string) {
+  async getChainSwapClaimDetails(id: string) {
     try {
       const response = await axios.get(
         `${this.apiUrl}/v2/swap/chain/${id}/claim`,
@@ -35,7 +35,7 @@ export class BoltzClient {
       return response.data;
     } catch (error) {
       console.error(
-        `Failed to get swap claim details for ID ${id}:`,
+        `Failed to get chain swap claim details for ID ${id}:`,
         error.response?.data || error.message,
       );
       throw error;
@@ -60,25 +60,53 @@ export class BoltzClient {
       return response.data;
     } catch (error) {
       console.error(
-        `Failed to claim chain swap for ID ${swapId}:`,
+        `Failed to claim chain swap ${swapId}:`,
         error.response?.data || error.message,
       );
       throw error;
     }
   }
 
-  async claimBTC(claimTxHex: string) {
+  async claimBTC(transactionHex: string): Promise<string> {
     try {
       const response = await axios.post(
         `${this.apiUrl}/v2/chain/BTC/transaction`,
         {
-          hex: claimTxHex,
+          hex: transactionHex,
         },
+      );
+      return response.data.id;
+    } catch (error) {
+      console.error(
+        "Failed to broadcast BTC transaction:",
+        error.response?.data || error.message,
+      );
+      throw error;
+    }
+  }
+
+  async getChainSwapFee(): Promise<any> {
+    try {
+      const response = await axios.get(`${this.apiUrl}/v2/swap/chain`);
+      return response.data;
+    } catch (error) {
+      console.error(
+        "Failed to get chain swap fees:",
+        error.response?.data || error.message,
+      );
+      throw error;
+    }
+  }
+
+  async getNetworkFee(currency: "BTC" | "L-BTC"): Promise<{ fee: number }> {
+    try {
+      const response = await axios.get(
+        `${this.apiUrl}/v2/chain/${currency}/fee`,
       );
       return response.data;
     } catch (error) {
       console.error(
-        "Failed to claim BTC:",
+        `Failed to get network fees for ${currency}:`,
         error.response?.data || error.message,
       );
       throw error;

@@ -19,7 +19,6 @@ import {BoltzClient} from "./boltz-client";
 import {BoltzWebsocketClient} from "./boltz-websocket-client";
 import {ChainSwapResponseDto} from "./dto/chain-swap-response.dto";
 import {Transaction} from "bitcoinjs-lib";
-import {regtest} from "liquidjs-lib/src/networks";
 
 // Mock entities for testing
 interface WithdrawChainSwapTransaction {
@@ -113,7 +112,6 @@ export class ChainToChainSwapService {
         const lockupTx = bitcoin.Transaction.fromHex(lockupTransactionHex);
         console.log("- Lockup transaction parsed, outputs:", lockupTx.outs.length);
 
-        // This is where the issue might be - detectSwap returning undefined
         const swapOutput = detectSwap(tweakedKey, lockupTx);
 
         console.log("- detectSwap result:", swapOutput);
@@ -132,8 +130,11 @@ export class ChainToChainSwapService {
             throw new Error("No swap output found in lockup transaction");
         }
 
+        // Get network fee for proper fee calculation
+        const networkFee = await this.boltzClient.getNetworkFee("BTC");
+
         // Create a claim transaction to be signed cooperatively via a key path spend
-        const transaction = targetFee(2, (fee) =>
+        const transaction = targetFee(networkFee.fee, (fee) =>
             constructClaimTransaction(
                 [
                     {
@@ -168,6 +169,9 @@ export class ChainToChainSwapService {
             throw new Error("Invalid address or amount");
         }
 
+        // Calculate proper lockup amount including fees
+        const sendParams = await this.calculateLockupSend(amount);
+
         // Generate preimage and preimage hash for the chain swap
         const preimage = randomBytes(32);
         const preimageHash = LiquidCrypto.sha256(preimage);
@@ -177,11 +181,14 @@ export class ChainToChainSwapService {
         console.log("- Preimage hash:", preimageHash.toString("hex"));
         console.log("- User BTC address:", userBtcAddress);
         console.log("- Amount:", amount);
+        console.log("- Lockup amount:", sendParams.lockupAmount);
+        console.log("- Boltz fee:", sendParams.boltzFee);
+        console.log("- Miner fees:", sendParams.minerFees);
 
         const chainSwap = await this.boltzClient.createChainSwap({
             from: "L-BTC",
             to: "BTC",
-            userLockAmount: amount,
+            userLockAmount: sendParams.lockupAmount,
             userAddress: userBtcAddress,
             refundPublicKey: await this.getPubKeyHex(),
             claimPublicKey: await this.getPubKeyHex(),
@@ -275,67 +282,31 @@ export class ChainToChainSwapService {
                     }
 
                     case "transaction.server.mempool": {
-                        console.log(
-                            `✅ Creating claim transaction for chain swap: '${chainSwapEntity.swapId}'`
+                        await this.updateChainSwapStatus(
+                            chainSwapEntity.id,
+                            ChainSwapTransactionStatus.CLAIM_PENDING,
+                            msg.args[0].transaction?.id
                         );
-                        console.log(
-                            "Server transaction hex:",
-                            msg.args[0].transaction?.hex
+                        break;
+                    }
+
+                    case "transaction.server.confirmed": {
+                        await this.broadcastCoSignedClaimTransaction(
+                            chainSwapEntity,
+                            msg.args[0].transaction?.hex,
+                            userId
                         );
-
-                        if (!msg.args[0].transaction?.hex) {
-                            throw new Error(
-                                "No transaction hex provided in server mempool event"
-                            );
-                        }
-
-                        const preimageBuffer = Buffer.from(chainSwapEntity.preimage, "hex");
-
-                        try {
-                            const claimTransactionDetails = await this.createClaimTransaction(
-                                preimageBuffer,
-                                chainSwapEntity,
-                                msg.args[0].transaction.hex
-                            );
-
-                            console.log("✅ Claim transaction created successfully");
-
-                            const boltzPartialSignature = await this.getBoltzPartialSignature(
-                                preimageBuffer,
-                                chainSwapEntity,
-                                Buffer.from(claimTransactionDetails.musig.getPublicNonce()),
-                                claimTransactionDetails.transaction
-                            );
-
-                            console.log("✅ Boltz partial signature obtained");
-
-                            await this.performChainSwapClaim(
-                                claimTransactionDetails,
-                                chainSwapEntity,
-                                boltzPartialSignature
-                            );
-
-                            await this.updateChainSwapStatus(
-                                chainSwapEntity.id,
-                                ChainSwapTransactionStatus.CLAIM_PENDING
-                            );
-
-                            console.log("✅ Claim transaction submitted");
-                        } catch (claimError) {
-                            console.error("❌ Error during claim process:", claimError);
-                            throw claimError;
-                        }
                         break;
                     }
 
                     case "transaction.claimed": {
                         console.log(
-                            `✅ Swap successful for chain swap: '${chainSwapEntity.swapId}'`
+                            `✅ Swap successfully claimed by Boltz for chain swap: '${chainSwapEntity.swapId}'`
                         );
-                        await this.finishChainSwap(chainSwapEntity, userId, 0);
-                        this.boltzWebSocketClient.unsubscribe("swap.update", [
-                            chainSwapEntity.swapId,
-                        ]);
+                        await this.updateChainSwapStatus(
+                            chainSwapEntity.id,
+                            ChainSwapTransactionStatus.CLAIM_CONFIRMED
+                        );
                         break;
                     }
 
@@ -400,6 +371,47 @@ export class ChainToChainSwapService {
         });
     }
 
+    private async broadcastCoSignedClaimTransaction(
+        chainSwapEntity: WithdrawChainSwapTransaction,
+        transactionHex: string,
+        userId: string,
+    ) {
+        console.log(`Creating claim transaction for chain swap: '${chainSwapEntity.swapId}'`);
+        const preimageBuffer = Buffer.from(chainSwapEntity.preimage, "hex");
+
+        try {
+            const claimTransactionDetails = await this.createClaimTransaction(
+                preimageBuffer,
+                chainSwapEntity,
+                transactionHex,
+            );
+
+            console.log("✅ Claim transaction created successfully");
+
+            const boltzPartialSignature = await this.getBoltzPartialSignature(
+                preimageBuffer,
+                chainSwapEntity,
+                Buffer.from(claimTransactionDetails.musig.getPublicNonce()),
+                claimTransactionDetails.transaction,
+            );
+
+            await this.performChainSwapClaim(
+                claimTransactionDetails,
+                chainSwapEntity,
+                boltzPartialSignature,
+            );
+
+            console.log("✅ Claim transaction submitted");
+        } catch (claimError) {
+            console.error("❌ Error during claim process:", claimError);
+            await this.updateChainSwapStatus(
+                chainSwapEntity.id,
+                ChainSwapTransactionStatus.CLAIM_FAILED
+            );
+            throw claimError;
+        }
+    }
+
     // Mock implementation for testing
     private async updateChainSwapStatus(
         chainSwapTransactionEntityId: number,
@@ -436,7 +448,7 @@ export class ChainToChainSwapService {
     ) {
         console.log("Getting Boltz partial signature...");
 
-        const serverClaimDetails = await this.boltzClient.getSwapClaimDetails(
+        const serverClaimDetails = await this.boltzClient.getChainSwapClaimDetails(
             swapEntity.swapId
         );
         const boltzPublicKey = Buffer.from(swapEntity.lockupPublicKey, "hex");
@@ -472,6 +484,8 @@ export class ChainToChainSwapService {
             }
         );
 
+        console.log("✅ Boltz partial signature obtained");
+
         return {
             pubNonce: Buffer.from(ourClaimDetails.pubNonce, "hex"),
             partialSignature: Buffer.from(ourClaimDetails.partialSignature, "hex"),
@@ -500,12 +514,7 @@ export class ChainToChainSwapService {
             claimDetails.transaction.hashForWitnessV1(
                 0,
                 [claimDetails.swapOutput.script],
-                [
-                    {
-                        value: claimDetails.swapOutput.value,
-                        asset: claimDetails.swapOutput.asset,
-                    },
-                ],
+                [claimDetails.swapOutput.value],
                 Transaction.SIGHASH_DEFAULT
             )
         );
@@ -530,6 +539,22 @@ export class ChainToChainSwapService {
         console.log(
             `✅ Sent claim transaction for chain swap: '${chainSwapEntity.swapId}'`
         );
+    }
+
+    private async calculateLockupSend(amount: number) {
+        const swapPairs = await this.boltzClient.getChainSwapFee();
+        const boltzFeePercentage = swapPairs["L-BTC"]["BTC"].fees.percentage;
+        const serverFee = swapPairs["L-BTC"]["BTC"].fees.minerFees.server;
+        const userClaimFee = swapPairs["L-BTC"]["BTC"].fees.minerFees.user.claim;
+        const minerFees = serverFee + userClaimFee;
+        const lockupAmount = Math.ceil((amount + minerFees) / (1 - boltzFeePercentage / 100));
+        const boltzFee = lockupAmount - amount - minerFees;
+
+        return {
+            lockupAmount,
+            minerFees,
+            boltzFee,
+        };
     }
 
     // Method to disconnect WebSocket
