@@ -31,6 +31,9 @@ interface WithdrawChainSwapTransaction {
     lockupPublicKey: string;
     lockupSwapTree: string;
     preimage: string;
+    minerFees: number;
+    boltzFee: number;
+    feeRate: number;
 }
 
 // Mock enums for testing
@@ -130,11 +133,8 @@ export class ChainToChainSwapService {
             throw new Error("No swap output found in lockup transaction");
         }
 
-        // Get network fee for proper fee calculation
-        const networkFee = await this.boltzClient.getNetworkFee("BTC");
-
         // Create a claim transaction to be signed cooperatively via a key path spend
-        const transaction = targetFee(networkFee.fee, (fee) =>
+        const transaction = targetFee(swapEntity.feeRate, (fee) =>
             constructClaimTransaction(
                 [
                     {
@@ -184,6 +184,7 @@ export class ChainToChainSwapService {
         console.log("- Lockup amount:", sendParams.lockupAmount);
         console.log("- Boltz fee:", sendParams.boltzFee);
         console.log("- Miner fees:", sendParams.minerFees);
+        console.log("- Fee rate:", sendParams.feeRate);
 
         const chainSwap = await this.boltzClient.createChainSwap({
             from: "L-BTC",
@@ -211,6 +212,9 @@ export class ChainToChainSwapService {
             claimBlindingKey: chainSwap.claimDetails.blindingKey,
             lockupPublicKey: chainSwap.lockupDetails.serverPublicKey,
             lockupSwapTree: JSON.stringify(chainSwap.lockupDetails.swapTree),
+            feeRate: sendParams.feeRate,
+            boltzFee: sendParams.boltzFee,
+            minerFees: sendParams.minerFees,
             preimage: preimage.toString("hex"),
         };
 
@@ -542,6 +546,7 @@ export class ChainToChainSwapService {
     }
 
     private async calculateLockupSend(amount: number) {
+        const claimTxFeeRate = await this.boltzClient.getNetworkFee("BTC");
         const swapPairs = await this.boltzClient.getChainSwapFee();
         const boltzFeePercentage = swapPairs["L-BTC"]["BTC"].fees.percentage;
         const serverFee = swapPairs["L-BTC"]["BTC"].fees.minerFees.server;
@@ -554,6 +559,7 @@ export class ChainToChainSwapService {
             lockupAmount,
             minerFees,
             boltzFee,
+            feeRate: claimTxFeeRate.fee
         };
     }
 
